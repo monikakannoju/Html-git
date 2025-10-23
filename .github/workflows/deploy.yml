@@ -18,10 +18,15 @@ jobs:
       with:
         ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
+    - name: Debug secrets
+      run: |
+        echo "Deploying to user: ${{ secrets.SERVER_USER }}"
+        echo "Server IP: ${{ secrets.SERVER_IP }}"
+
     - name: Deploy to VM
       run: |
-        ssh -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
-        # Create directory for deployment if it doesn't exist
+        ssh -T -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
+        # Create deployment directory if it doesn't exist
         mkdir -p /home/${{ secrets.SERVER_USER }}/static-site
         cd /home/${{ secrets.SERVER_USER }}/static-site
 
@@ -29,10 +34,10 @@ jobs:
         docker stop static-site || true
         docker rm static-site || true
 
-        # Copy website files into deployment directory
+        # Copy website files into deployment directory (excluding .git)
         rsync -av --exclude '.git' $GITHUB_WORKSPACE/Html/ .
 
-        # Build and run new Docker container
+        # Build and run Docker container
         docker build -t static-site .
         docker run -d --name static-site -p 80:80 static-site
         EOF
