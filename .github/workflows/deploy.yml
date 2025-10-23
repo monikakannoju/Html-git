@@ -1,4 +1,4 @@
-name: CI/CD Pipeline for Static Website
+name: Deploy Static Website
 
 on:
   push:
@@ -10,27 +10,29 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+    - name: Checkout repository
+      uses: actions/checkout@v3
 
-      - name: Build Docker image
-        run: docker build -t static-site:latest .
+    - name: Setup SSH
+      uses: webfactory/ssh-agent@v0.9.0
+      with:
+        ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
-      - name: Setup SSH
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+    - name: Deploy to VM
+      run: |
+        ssh -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
+        # Create directory for deployment if it doesn't exist
+        mkdir -p /home/${{ secrets.SERVER_USER }}/static-site
+        cd /home/${{ secrets.SERVER_USER }}/static-site
 
-      - name: Copy files to remote server
-        run: |
-          scp -o StrictHostKeyChecking=no -r . ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }}:/home/${{ secrets.SERVER_USER }}/static-site
+        # Stop and remove old container if it exists
+        docker stop static-site || true
+        docker rm static-site || true
 
-      - name: Deploy on remote server
-        run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
-          cd /home/${{ secrets.SERVER_USER }}/static-site
-          docker stop static-site || true
-          docker rm static-site || true
-          docker build -t static-site .
-          docker run -d --name static-site -p 80:80 static-site
-          EOF
+        # Copy website files into deployment directory
+        rsync -av --exclude '.git' $GITHUB_WORKSPACE/Html/ .
+
+        # Build and run new Docker container
+        docker build -t static-site .
+        docker run -d --name static-site -p 80:80 static-site
+        EOF
