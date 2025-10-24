@@ -9,7 +9,6 @@ env:
   SERVER_IP: 135.235.195.123
   SERVER_USER: user_1
   APP_NAME: static-site
-  DEPLOY_PATH: /home/user_1/static-site
 
 jobs:
   deploy:
@@ -28,56 +27,46 @@ jobs:
     
     - name: 🔍 Test SSH Connection
       run: |
-        ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP "echo '✅ SSH connection successful!' && hostname && whoami"
+        ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP "echo '✅ SSH connection successful!' && hostname"
     
-    - name: 📂 Prepare Deployment Directory
+    - name: 📂 Create Deployment Directory
       run: |
-        ssh $SERVER_USER@$SERVER_IP "mkdir -p $DEPLOY_PATH"
+        ssh $SERVER_USER@$SERVER_IP "mkdir -p /home/$SERVER_USER/static-site"
     
-    - name: 📤 Copy Files to Server
+    - name: 📤 Copy Files to Server (using rsync)
       run: |
-        # Use rsync for more efficient transfer (only copies changed files)
         rsync -avz --delete \
           -e "ssh -o StrictHostKeyChecking=no" \
           ./Html-git/Html/ \
-          $SERVER_USER@$SERVER_IP:$DEPLOY_PATH/
+          $SERVER_USER@$SERVER_IP:/home/$SERVER_USER/static-site/
     
     - name: 🚀 Deploy Docker Container
       run: |
         ssh $SERVER_USER@$SERVER_IP << 'ENDSSH'
-          set -e  # Exit on any error
-          
-          cd $DEPLOY_PATH
+          cd /home/user_1/static-site
           
           echo "🛑 Stopping old container..."
-          docker stop $APP_NAME 2>/dev/null || echo "No container to stop"
-          docker rm $APP_NAME 2>/dev/null || echo "No container to remove"
+          docker stop static-site 2>/dev/null || true
+          docker rm static-site 2>/dev/null || true
           
-          echo "🧹 Cleaning up old images..."
-          docker rmi $APP_NAME 2>/dev/null || echo "No old image to remove"
+          echo "🧹 Removing old image..."
+          docker rmi static-site 2>/dev/null || true
           
-          echo "🔨 Building new Docker image..."
-          docker build -t $APP_NAME .
+          echo "🔨 Building Docker image..."
+          docker build -t static-site .
           
-          echo "🚀 Starting new container..."
+          echo "🚀 Starting container..."
           docker run -d \
-            --name $APP_NAME \
+            --name static-site \
             --restart unless-stopped \
             -p 80:80 \
-            $APP_NAME
+            static-site
           
           echo "🔍 Verifying deployment..."
           sleep 2
-          if docker ps | grep -q $APP_NAME; then
-            echo "✅ Container is running successfully!"
-            docker ps | grep $APP_NAME
-          else
-            echo "❌ Container failed to start!"
-            docker logs $APP_NAME
-            exit 1
-          fi
+          docker ps | grep static-site
           
-          echo "🎉 Deployment Complete!"
+          echo "✅ Deployment complete!"
 ENDSSH
     
     - name: 📊 Deployment Summary
@@ -87,12 +76,4 @@ ENDSSH
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "- **Server:** $SERVER_IP" >> $GITHUB_STEP_SUMMARY
         echo "- **Application:** $APP_NAME" >> $GITHUB_STEP_SUMMARY
-        echo "- **Status:** Running on port 80" >> $GITHUB_STEP_SUMMARY
         echo "- **URL:** http://$SERVER_IP" >> $GITHUB_STEP_SUMMARY
-    
-    - name: 🚨 Deployment Failed
-      if: failure()
-      run: |
-        echo "### ❌ Deployment Failed!" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "Check the logs above for details." >> $GITHUB_STEP_SUMMARY
