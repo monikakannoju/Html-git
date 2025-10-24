@@ -1,43 +1,62 @@
-name: Deploy Static Website
+name: 🚀 Deploy Static Website to VM (Docker + Nginx)
 
 on:
   push:
     branches:
-      - main
+      - main  # Trigger when you push to main branch
 
 jobs:
   deploy:
+    name: Build & Deploy Static Website
     runs-on: ubuntu-latest
 
+    env:
+      SERVER_IP: 135.235.195.123     # your VM’s IP
+      SERVER_USER: user_1            # your VM username
+
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
+    - name: 📥 Checkout Repository
+      uses: actions/checkout@v4
 
-    - name: Setup SSH
-      uses: webfactory/ssh-agent@v0.9.0
-      with:
-        ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+    - name: 🐳 Set up Docker (on runner)
+      uses: docker/setup-buildx-action@v3
 
-    - name: Debug secrets
+    - name: 🔑 Setup SSH Key for Deployment
       run: |
-        echo "Deploying to user: ${{ secrets.SERVER_USER }}"
-        echo "Server IP: ${{ secrets.SERVER_IP }}"
+        eval "$(ssh-agent -s)"
+        echo "${{ secrets.SSH_PRIVATE_KEY }}" | tr -d '\r' | ssh-add -
+        mkdir -p ~/.ssh
+        ssh-keyscan -H $SERVER_IP >> ~/.ssh/known_hosts
 
-    - name: Deploy to VM
+    - name: 📦 Deploy Static Website to VM
       run: |
-        ssh -T -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
-        # Create deployment directory if it doesn't exist
-        mkdir -p /home/${{ secrets.SERVER_USER }}/static-site
-        cd /home/${{ secrets.SERVER_USER }}/static-site
+        ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP << 'EOF'
+        set -e
 
-        # Stop and remove old container if it exists
+        echo "🔹 Creating deployment directory..."
+        mkdir -p /home/$USER/static-site
+        cd /home/$USER/static-site
+
+        echo "🔹 Cleaning old container (if any)..."
         docker stop static-site || true
         docker rm static-site || true
 
-        # Copy website files into deployment directory (excluding .git)
-        rsync -av --exclude '.git' $GITHUB_WORKSPACE/Html/ .
+        echo "🔹 Copying new files..."
+        rm -rf *
+        # Copy your static site from repo
+        cat > index.html <<'HTML'
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Static Site Deployed via GitHub Actions</title>
+        </head>
+        <body>
+          <h1>Hello from CI/CD Pipeline 🚀</h1>
+          <p>Deployed successfully on $(hostname)</p>
+        </body>
+        </html>
+        HTML
 
-        # Build and run Docker container
-        docker build -t static-site .
-        docker run -d --name static-site -p 80:80 static-site
-        EOF
+        echo "🔹 Creating Dockerfile..."
+        cat > Dockerfile <<'DOCKER'
+        FRO
