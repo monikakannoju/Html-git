@@ -1,34 +1,33 @@
-name: 🚀 Deploy Static Website to VM (Docker + Nginx)
+name: 🚀 CI/CD:Deploy Static Website to VM using Docker + Nginx
 
 on:
   push:
-    branches:
-      - main  # Trigger when you push to main branch
+    branches: [ "main" ]  # Run when you push to main
 
 jobs:
   deploy:
-    name: Build & Deploy Static Website
     runs-on: ubuntu-latest
 
     env:
-      SERVER_IP: 135.235.195.123     # your VM’s IP
-      SERVER_USER: user_1            # your VM username
+      SERVER_IP: 135.235.195.123
+      SERVER_USER: user_1
 
     steps:
-    - name: 📥 Checkout Repository
+    - name: 📦 Checkout repository
       uses: actions/checkout@v4
 
-    - name: 🐳 Set up Docker (on runner)
-      uses: docker/setup-buildx-action@v3
-
-    - name: 🔑 Setup SSH Key for Deployment
+    - name: 🔑 Configure SSH
       run: |
         eval "$(ssh-agent -s)"
         echo "${{ secrets.SSH_PRIVATE_KEY }}" | tr -d '\r' | ssh-add -
         mkdir -p ~/.ssh
         ssh-keyscan -H $SERVER_IP >> ~/.ssh/known_hosts
 
-    - name: 📦 Deploy Static Website to VM
+    - name: 🔍 Test SSH connection
+      run: |
+        ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP "echo '✅ SSH connection successful from GitHub Actions!' && hostname && whoami"
+
+    - name: 🐳 Deploy Docker static site
       run: |
         ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP << 'EOF'
         set -e
@@ -37,26 +36,39 @@ jobs:
         mkdir -p /home/$USER/static-site
         cd /home/$USER/static-site
 
-        echo "🔹 Cleaning old container (if any)..."
+        echo "🔹 Stopping any old container..."
         docker stop static-site || true
         docker rm static-site || true
 
-        echo "🔹 Copying new files..."
+        echo "🔹 Copying static HTML from repo..."
         rm -rf *
-        # Copy your static site from repo
+        mkdir -p html
+        cd html
+
         cat > index.html <<'HTML'
         <!DOCTYPE html>
         <html>
-        <head>
-          <title>Static Site Deployed via GitHub Actions</title>
-        </head>
+        <head><title>Static Website</title></head>
         <body>
-          <h1>Hello from CI/CD Pipeline 🚀</h1>
-          <p>Deployed successfully on $(hostname)</p>
+          <h1>🚀 CI/CD Static Website deployed via GitHub Actions!</h1>
+          <p>Server: $(hostname)</p>
         </body>
         </html>
         HTML
 
+        cd ..
         echo "🔹 Creating Dockerfile..."
         cat > Dockerfile <<'DOCKER'
-        FRO
+        FROM nginx:alpine
+        COPY html /usr/share/nginx/html
+        EXPOSE 80
+        DOCKER
+
+        echo "🔹 Building Docker image..."
+        docker build -t static-site .
+
+        echo "🔹 Running container on port 80..."
+        docker run -d --name static-site -p 80:80 static-site
+
+        echo "✅ Deployment completed successfully!"
+        EOF
