@@ -29,20 +29,22 @@ jobs:
       run: |
         ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP "echo '✅ SSH connection successful!' && hostname"
     
-    - name: 📂 Create Deployment Directory
+    - name: 📂 Create Deployment Directory on VM
       run: |
         ssh $SERVER_USER@$SERVER_IP "mkdir -p /home/$SERVER_USER/static-site"
-    
-    - name: 📤 Copy Files to Server (using rsync)
+
+    - name: 📤 Copy Files to Server
       run: |
+        # Copy all project files (adjust path if your HTML files are elsewhere)
         rsync -avz --delete \
           -e "ssh -o StrictHostKeyChecking=no" \
-          ./Html-git/Html/ \
+          ./ \
           $SERVER_USER@$SERVER_IP:/home/$SERVER_USER/static-site/
-    
-    - name: 🚀 Deploy Docker Container
+
+    - name: 🚀 Deploy Docker Container on VM
       run: |
-        ssh $SERVER_USER@$SERVER_IP << 'ENDSSH'
+        ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP << 'ENDSSH'
+          set -e
           cd /home/user_1/static-site
           
           echo "🛑 Stopping old container..."
@@ -64,10 +66,8 @@ jobs:
           
           echo "🔍 Verifying deployment..."
           sleep 2
-          docker ps | grep static-site
-          
-          echo "✅ Deployment complete!"
-ENDSSH
+          docker ps | grep static-site && echo "✅ Deployment complete!"
+        ENDSSH
     
     - name: 📊 Deployment Summary
       if: success()
